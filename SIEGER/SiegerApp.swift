@@ -26,6 +26,7 @@ final class ResearchStore: ObservableObject {
         error = nil
     }
     func importFile(_ url: URL) {
+        guard !loading, updating.isEmpty else { error="Bitte den laufenden Abruf vor dem Import abwarten."; return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do { try accept(SnapshotIO.readFile(url)) } catch { self.error = error.localizedDescription }
@@ -88,7 +89,7 @@ final class ResearchStore: ObservableObject {
         if !failures.isEmpty { error=failures.joined(separator:" · ") }
     }
     func refresh() async {
-        guard !loading else { return }
+        guard !loading, updating.isEmpty else { return }
         guard let url = URL(string: endpoint), url.scheme?.lowercased() == "https", url.host != nil, url.user == nil, url.password == nil else {
             error = "Bitte eine HTTPS-Adresse für die freigegebenen Recherchedaten eintragen oder eine Datei importieren."
             return
@@ -97,7 +98,7 @@ final class ResearchStore: ObservableObject {
         defer { loading = false }
         do {
             try accept(await PublicHTTP.get(url))
-            UserDefaults.standard.set(endpoint, forKey: "snapshotURL")
+            UserDefaults.standard.set(url.absoluteString, forKey: "snapshotURL")
         } catch { self.error = "Aktualisierung fehlgeschlagen. Vorhandene Daten bleiben erhalten. " + error.localizedDescription }
     }
 }
@@ -249,7 +250,7 @@ struct InstrumentView: View {
         .refreshable { await store.refreshInstrument(item.id) }
         .toolbar {
             Button(store.updating.contains(item.id) ? "Lädt …" : "Aktualisieren") { Task { await store.refreshInstrument(item.id) } }
-                .disabled(store.updating.contains(item.id))
+                .disabled(store.loading || store.updating.contains(item.id))
         }
     }
 }
